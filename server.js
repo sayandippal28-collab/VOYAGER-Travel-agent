@@ -1,48 +1,81 @@
-const express = require("express");
-const cors = require("cors");
-const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
+import express from "express";
+import cors from "cors";
+import fetch from "node-fetch";
+import dotenv from "dotenv";
 
-require("dotenv").config();
+dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
+const API_KEY = process.env.GEMINI_API_KEY;
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static("."));
 
-const API_KEY = process.env.OPENAI_API_KEY;
-console.log("🔑 OpenAI API Key:", API_KEY ? "Loaded ✅" : "Missing ❌");
+console.log("🔑 API Key:", API_KEY ? "Loaded ✅" : "Missing ❌");
 
-// ── Core OpenAI call ──
-async function callOpenAI(messages, maxTokens = 2048) {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${API_KEY}`
-        },
-        body: JSON.stringify({
-            model: "gpt-4o-mini",  // cheap, fast, very capable
-            messages,
-            max_tokens: maxTokens,
-            temperature: 0.7
-        })
-    });
+// Models to try in order
+const MODELS = [
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-001",
+    "gemini-2.0-flash-lite",
+    "gemini-2.5-flash",
+];
 
-    if (!response.ok) {
-        const err = await response.json();
-        console.error("❌ OpenAI error:", response.status, JSON.stringify(err));
-        throw new Error(`OpenAI API error: ${response.status} — ${err?.error?.message}`);
+// ── Core Gemini call with model fallback ──
+async function callGemini(promptText, maxTokens = 2048) {
+    for (const model of MODELS) {
+        try {
+            console.log(`🤖 Trying: ${model}`);
+
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 15000);
+
+            const response = await fetch(
+                `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${API_KEY}`,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        contents: [{ role: "user", parts: [{ text: promptText }] }],
+                        generationConfig: { temperature: 0.7, maxOutputTokens: 8192 }
+                    }),
+                    signal: controller.signal
+                }
+            );
+
+            clearTimeout(timeout);
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                console.log(`⚠️ ${model} failed: ${err?.error?.message || response.status}`);
+                continue;
+            }
+
+            const data = await response.json();
+            const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+            if (!text) {
+                console.log(`⚠️ ${model} returned empty`);
+                continue;
+            }
+
+            console.log(`✅ Got response from ${model}`);
+            console.log('📝 Raw text:', text.substring(0, 500));
+            return { text, model };
+
+        } catch (err) {
+            console.log(`❌ ${model} error: ${err.message}`);
+            continue;
+        }
     }
-
-    const data = await response.json();
-    return data?.choices?.[0]?.message?.content;
+    return null;
 }
 
 // Health
 app.get("/health", (req, res) => {
-    res.json({ status: "ok", openai: API_KEY ? "connected" : "not configured" });
+    res.json({ status: "ok", gemini: API_KEY ? "connected" : "not configured", models: MODELS });
 });
 
 // Generate itinerary
@@ -50,7 +83,7 @@ app.post("/generate", async (req, res) => {
     try {
         const { prompt } = req.body;
 
-        if (!prompt || prompt.length < 3) {
+        if (!prompt || prompt.trim().length < 3) {
             return res.json({ success: false, error: "Enter a valid prompt" });
         }
 
@@ -71,12 +104,9 @@ app.post("/generate", async (req, res) => {
             return res.json({ success: true, itinerary: JSON.stringify(mock) });
         }
 
-        console.log("📍 Generating itinerary for:", prompt);
+        console.log(`\n📍 Request: ${prompt}`);
 
-        const rawText = await callOpenAI([
-            {
-                role: "system",
-                content: `You are a travel planner. Return ONLY a valid JSON object. No markdown, no backticks, no explanation — pure JSON only.
+        const systemPrompt = `You are a travel planner. Return ONLY a valid JSON object. No markdown, no backticks, no explanation.
 
 Schema:
 {
@@ -88,35 +118,50 @@ Schema:
     {
       "day": 1,
       "theme": "Theme name",
-      "morning": "Morning activity description",
-      "afternoon": "Afternoon activity description",
-      "evening": "Evening activity description"
+      "morning": "Morning activity",
+      "afternoon": "Afternoon activity",
+      "evening": "Evening activity"
     }
   ]
 }
 
-Output ONLY the JSON object. Start with { and end with }.`
-            },
-            {
-                role: "user",
-                content: prompt
-            }
-        ]);
+User request: ${prompt}
 
-        // Robust JSON extraction
-        const firstBrace = rawText.indexOf('{');
-        const lastBrace = rawText.lastIndexOf('}');
+Output ONLY the JSON object. Start with { and end with }.`;
+
+        const result = await callGemini(systemPrompt);
+
+        if (!result) {
+            return res.json({ success: false, error: "All models rate limited. Wait a minute and try again." });
+        }
+
+        const { text: rawText, model } = result;
+
+        console.log("📝 Raw text preview:", rawText.substring(0, 300));
+
+        // Strip markdown fences like ```json ... ```
+        let cleaned = rawText
+            .replace(/```json\s*/gi, "")
+            .replace(/```\s*/g, "")
+            .trim();
+
+        // Slice from first { to last }
+        const firstBrace = cleaned.indexOf('{');
+        const lastBrace = cleaned.lastIndexOf('}');
 
         if (firstBrace === -1 || lastBrace === -1) {
-            console.error("❌ No JSON found in response:", rawText);
+            console.error("❌ No JSON braces found. Raw:", rawText.substring(0, 500));
             return res.json({ success: false, error: "AI response was not valid JSON" });
         }
 
+        cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+
         let parsed;
         try {
-            parsed = JSON.parse(rawText.slice(firstBrace, lastBrace + 1));
+            parsed = JSON.parse(cleaned);
         } catch (e) {
             console.error("❌ JSON parse failed:", e.message);
+            console.error("❌ Attempted:", cleaned.substring(0, 500));
             return res.json({ success: false, error: "AI returned malformed JSON" });
         }
 
@@ -124,12 +169,12 @@ Output ONLY the JSON object. Start with { and end with }.`
             return res.json({ success: false, error: "AI response missing required fields" });
         }
 
-        console.log(`✅ Itinerary ready for: ${parsed.destination}`);
+        console.log(`✅ Itinerary ready for: ${parsed.destination} (via ${model})`);
         res.json({ success: true, itinerary: JSON.stringify(parsed) });
 
     } catch (err) {
         console.error("❌ Error:", err.message);
-        res.json({ success: false, error: err.message || "Failed to generate itinerary" });
+        res.json({ success: false, error: "Failed to generate itinerary" });
     }
 });
 
@@ -141,24 +186,21 @@ app.post("/chat", async (req, res) => {
         if (!message) return res.json({ success: false, error: "No message provided" });
 
         if (!API_KEY) {
-            return res.json({ success: true, reply: "I'm VOYAGER! (Mock mode — add OpenAI API key to .env for real answers.)" });
+            return res.json({ success: true, reply: "I'm VOYAGER! (Add Gemini API key to .env for real answers.)" });
         }
 
-        const messages = [
-            { role: "system", content: "You are VOYAGER, a helpful and friendly travel assistant. Answer travel questions concisely. If asked about non-travel topics, gently redirect to travel." },
-            ...(history || []).map(h => ({ role: h.role === "model" ? "assistant" : h.role, content: h.text })),
-            { role: "user", content: message }
-        ];
+        const historyText = (history || []).map(h => `${h.role === "user" ? "User" : "Assistant"}: ${h.text}`).join("\n");
+        const fullPrompt = `You are VOYAGER, a friendly travel assistant. Answer travel questions concisely.\n\n${historyText}\nUser: ${message}\nAssistant:`;
 
-        const reply = await callOpenAI(messages, 512);
+        const result = await callGemini(fullPrompt, 512);
 
-        if (!reply) return res.json({ success: false, error: "No response from AI" });
+        if (!result) return res.json({ success: false, error: "Rate limited. Please wait a moment." });
 
-        res.json({ success: true, reply });
+        res.json({ success: true, reply: result.text });
 
     } catch (err) {
         console.error("❌ Chat error:", err.message);
-        res.json({ success: false, error: err.message || "Chat failed" });
+        res.json({ success: false, error: "Chat failed" });
     }
 });
 
@@ -169,5 +211,6 @@ app.get("/", (req, res) => {
 
 app.listen(PORT, () => {
     console.log(`\n🚀 Server running at http://localhost:${PORT}`);
-    console.log(`🔑 OpenAI: ${API_KEY ? "Connected ✅" : "NOT configured ⚠️"}\n`);
+    console.log(`🔑 Gemini: ${API_KEY ? "Connected ✅" : "NOT configured ⚠️"}`);
+    console.log(`📋 Models: ${MODELS.join(" → ")}\n`);
 });
