@@ -2,90 +2,52 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- this makes it look good on phones too -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Voyager - Login</title>
-    <link rel="icon" href="../landing page/img/voyager_icon.jpeg">
-    <!-- I'm using Google Fonts because they're free and look way better than Arial -->
-    <link
-      href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=Lato:wght@300;400;700&display=swap"
-      rel="stylesheet"
-    />
+    <title>VOYAGER - Login</title>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="login_style.css" />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.1/css/all.min.css"
-      integrity="sha512-2SwdPD6INVrV/lHTZbO2nodKhrnDdJK9/kg2XD1r9uGqPo1cUbujc+IYdlYdEErWNu69gVcYgdxlmVmzTWnetw=="
-      crossorigin="anonymous"
-      referrerpolicy="no-referrer"
-    />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" />
   </head>
   <body>
     <div class="page-wrapper">
       <div class="login-card">
-        <!-- brand header -->
+
         <div class="brand">
-          <div class="brand-name">Voyager</div>
-          <div class="brand-tagline">Your journey starts here</div>
+          <div class="brand-name">VOYAGER</div>
+          <div class="brand-tagline">Plan. Explore. Discover.</div>
         </div>
 
-        <!-- small divider -->
         <div class="divider">
           <div class="divider-line"></div>
           <span class="divider-text">Welcome Back</span>
           <div class="divider-line"></div>
         </div>
 
-        <!-- making the login form for website -->
-        <!-- I used onsubmit="return false" while testing so page doesn't reload -->
+        <!-- server error banner (hidden by default) -->
+        <div class="server-error" id="serverError"></div>
+
         <form id="loginForm" onsubmit="handleLogin(event)">
-          <!-- email field -->
           <div class="form-group" id="emailGroup">
             <label for="email">Email</label>
             <div class="input-wrapper">
-              <span class="input-icon">
-                <i class="fa-regular fa-envelope"></i>
-              </span>
-              <input
-                type="email"
-                id="email"
-                placeholder="you@example.com"
-                autocomplete="email"
-              />
+              <span class="input-icon"><i class="fa-regular fa-envelope"></i></span>
+              <input type="email" id="email" placeholder="you@example.com" autocomplete="email" />
             </div>
-            <div class="error-msg" id="emailError">
-              Please enter a valid email.
-            </div>
+            <div class="error-msg" id="emailError">Please enter a valid email.</div>
           </div>
 
-          <!-- password field -->
           <div class="form-group" id="passwordGroup">
             <label for="password">Password</label>
             <div class="input-wrapper">
-              <span class="input-icon">
-                <i class="fa-solid fa-lock"></i>
-              </span>
-              <input
-                type="password"
-                id="password"
-                placeholder="Enter your password"
-                autocomplete="current-password"
-              />
-              <!-- toggle button to show/hide password -->
-              <button
-                type="button"
-                class="toggle-pw"
-                onclick="togglePassword()"
-                id="toggleBtn"
-                title="Show/hide password"
-              ></button>
+              <span class="input-icon"><i class="fa-solid fa-lock"></i></span>
+              <input type="password" id="password" placeholder="Enter your password" autocomplete="current-password" />
+              <button type="button" class="toggle-pw" onclick="togglePassword()" id="toggleBtn" title="Show/hide password">
+                <i class="fa-regular fa-eye" id="eyeIcon"></i>
+              </button>
             </div>
-            <div class="error-msg" id="passwordError">
-              Password must be at least 6 characters.
-            </div>
+            <div class="error-msg" id="passwordError">Password must be at least 6 characters.</div>
           </div>
 
-          <!-- remember me + forgot password -->
           <div class="form-extras">
             <label class="remember-me">
               <input type="checkbox" id="rememberMe" />
@@ -94,39 +56,30 @@
             <a href="#" class="forgot-link">Forgot password?</a>
           </div>
 
-          <!-- submit button -->
           <button type="submit" class="btn-login" id="loginBtn">LOG IN</button>
         </form>
 
-        <!-- OR divider before social login -->
         <div class="or-divider">
           <span></span>
           <span class="or-text">OR CONTINUE WITH</span>
           <span></span>
         </div>
 
-        <!-- social login buttons -->
         <div class="social-row">
-          <!-- making login button for google -->
           <button class="btn-social" onclick="socialLogin('Google')">
-            <i class="fa-brands fa-google"></i>
-            Google
+            <i class="fa-brands fa-google"></i> Google
           </button>
-
-          <!-- making login button for facebook -->
           <button class="btn-social" onclick="socialLogin('Facebook')">
-            <i class="fa-brands fa-facebook"></i>
-            Facebook
+            <i class="fa-brands fa-facebook"></i> Facebook
           </button>
         </div>
 
-        <!-- link to sign up page -->
         <div class="signup-text">
-          Don't have an account?
-          <a href="#">Sign up free</a>
+          Don't have an account? <a href="/register">Sign up free</a>
         </div>
+
       </div>
     </div>
+    <script src="login_script.js"></script>
   </body>
-  <script src="login_script.js"></script>
 </html>
